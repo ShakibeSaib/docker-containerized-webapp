@@ -1,0 +1,818 @@
+## Overview
+
+This guide documents the initial setup of an AWS EC2 Linux server for a DevOps lab.
+
+The setup covers:
+
+* Creating an EC2 instance
+* Configuring storage and networking
+* Connecting from Windows using SSH
+* Creating a dedicated Linux user
+* Granting `sudo` privileges
+* Configuring SSH access for the new user
+* Verifying the Linux server
+* Performing basic server health checks
+
+The goal is to establish a clean Linux foundation before installing DevOps tools such as Docker, Terraform, Kubernetes, and monitoring tools.
+
+---
+
+# 1. Create the EC2 Instance
+
+## 1.1 AWS EC2 Configuration
+
+From the AWS Console:
+
+**AWS Console → EC2 → Launch Instance**
+
+Recommended configuration for this lab:
+
+| Setting       | Configuration     |
+| ------------- | ----------------- |
+| Name          | `devops-lab`      |
+| AMI           | Ubuntu Server LTS |
+| Architecture  | x86_64            |
+| Instance type | `t3.large`        |
+| Root volume   | 30 GB             |
+| Volume type   | gp3               |
+| Encryption    | Enabled           |
+| Public IPv4   | Enabled           |
+| Key pair      | `Shakibe_SSH`     |
+
+> AWS instance specifications and pricing can change. Verify the current EC2 pricing and free-tier eligibility in your AWS account before launching resources.
+
+---
+
+# 2. Configure the Security Group
+
+A Security Group works as a virtual firewall for the EC2 instance.
+
+For the initial setup, allow SSH access:
+
+| Type | Port | Source |
+| ---- | ---: | ------ |
+| SSH  |   22 | My IP  |
+
+Do not expose SSH to the entire internet:
+
+```text
+SSH → 22 → 0.0.0.0/0
+```
+
+Instead, restrict SSH access to your current public IP whenever possible.
+
+Later, when hosting a web application, we can add:
+
+```text
+HTTP  → 80  → 0.0.0.0/0
+HTTPS → 443 → 0.0.0.0/0
+```
+
+only when required.
+
+---
+
+# 3. Configure Storage
+
+For this lab, the root filesystem uses an EBS volume.
+
+Example:
+
+```text
+30 GB
+gp3
+Encrypted
+```
+
+No additional filesystem is required at this stage.
+
+We do not need EFS for the initial DevOps lab.
+
+The basic architecture is:
+
+```text
+EC2 Instance
+     |
+     +-- EBS Root Volume
+             |
+             +-- Ubuntu filesystem
+```
+
+---
+
+# 4. Create the SSH Key Pair
+
+Create an EC2 key pair:
+
+```text
+Shakibe_SSH
+```
+
+Download the `.pem` file and keep it secure.
+
+Example Windows location:
+
+```text
+C:\Users\<username>\Pictures\Shakibe_SSH.pem
+```
+
+The private key should never be committed to GitHub.
+
+---
+
+# 5. Connect to EC2 from Windows
+
+Open PowerShell and move to the directory containing the key:
+
+```powershell
+cd C:\Users\<username>\Pictures
+```
+
+Connect to the server:
+
+```powershell
+ssh -i ".\Shakibe_SSH.pem" ubuntu@<EC2_PUBLIC_IP>
+```
+
+Example:
+
+```powershell
+ssh -i ".\Shakibe_SSH.pem" ubuntu@13.223.44.81
+```
+
+After successful authentication:
+
+```text
+ubuntu@ip-172-31-35-140:~$
+```
+
+The default Ubuntu EC2 user is:
+
+```text
+ubuntu
+```
+
+---
+
+# 6. Verify the SSH Configuration
+
+After connecting:
+
+```bash
+whoami
+```
+
+Expected:
+
+```text
+ubuntu
+```
+
+Check the SSH directory:
+
+```bash
+ls -la ~/.ssh
+```
+
+Expected structure:
+
+```text
+.ssh/
+└── authorized_keys
+```
+
+Example:
+
+```text
+drwx------ 2 ubuntu ubuntu 4096 ...
+-rw------- 1 ubuntu ubuntu  393 ... authorized_keys
+```
+
+The `authorized_keys` file contains the public SSH key used to authenticate the EC2 connection.
+
+---
+
+# 7. Create a Dedicated Linux User
+
+Although the default `ubuntu` user already provides `sudo` access, we created a dedicated user for our DevOps work.
+
+Create the user:
+
+```bash
+sudo adduser devops
+```
+
+Enter a password when prompted.
+
+Optional information such as:
+
+```text
+Full Name
+Room Number
+Work Phone
+Home Phone
+```
+
+can be skipped by pressing Enter.
+
+---
+
+# 8. Grant sudo Access
+
+Add the user to the `sudo` group:
+
+```bash
+sudo usermod -aG sudo devops
+```
+
+Verify the user's groups:
+
+```bash
+groups devops
+```
+
+Example output:
+
+```text
+devops : devops sudo users
+```
+
+The important group is:
+
+```text
+sudo
+```
+
+This allows the user to execute administrative commands using:
+
+```bash
+sudo <command>
+```
+
+---
+
+# 9. Configure SSH Access for the New User
+
+Creating a Linux user does not automatically give that user SSH access using the EC2 key.
+
+Create the SSH directory:
+
+```bash
+sudo mkdir -p /home/devops/.ssh
+```
+
+Copy the existing EC2 public key:
+
+```bash
+sudo cp /home/ubuntu/.ssh/authorized_keys \
+/home/devops/.ssh/authorized_keys
+```
+
+Change ownership:
+
+```bash
+sudo chown -R devops:devops /home/devops/.ssh
+```
+
+Set the `.ssh` directory permissions:
+
+```bash
+sudo chmod 700 /home/devops/.ssh
+```
+
+Set the `authorized_keys` permissions:
+
+```bash
+sudo chmod 600 /home/devops/.ssh/authorized_keys
+```
+
+---
+
+# 10. Verify the New User's SSH Configuration
+
+Run:
+
+```bash
+sudo ls -la /home/devops/.ssh
+```
+
+Expected:
+
+```text
+drwx------ 2 devops devops ... .
+drwxr-x--- 3 devops devops ... ..
+-rw------- 1 devops devops ... authorized_keys
+```
+
+The important settings are:
+
+```text
+.ssh directory
+Owner: devops
+Group: devops
+Permission: 700
+
+authorized_keys
+Owner: devops
+Group: devops
+Permission: 600
+```
+
+---
+
+# 11. Connect as the New User
+
+Keep the original `ubuntu` SSH session open while testing the new account.
+
+From Windows PowerShell:
+
+```powershell
+cd C:\Users\<username>\Pictures
+```
+
+Connect:
+
+```powershell
+ssh -i ".\Shakibe_SSH.pem" devops@<EC2_PUBLIC_IP>
+```
+
+Example:
+
+```powershell
+ssh -i ".\Shakibe_SSH.pem" devops@13.223.44.81
+```
+
+After connecting:
+
+```bash
+whoami
+```
+
+Expected:
+
+```text
+devops
+```
+
+Check the current directory:
+
+```bash
+pwd
+```
+
+Expected:
+
+```text
+/home/devops
+```
+
+Verify administrative access:
+
+```bash
+sudo whoami
+```
+
+Expected:
+
+```text
+root
+```
+
+This confirms:
+
+```text
+devops
+   |
+   +-- Normal Linux operations
+   |
+   +-- sudo
+         |
+         +-- root privileges
+```
+
+---
+
+# 12. Linux Server Baseline Checks
+
+Before installing DevOps tools, check the server's current resources.
+
+## 12.1 Operating System
+
+```bash
+cat /etc/os-release
+```
+
+This provides information about:
+
+* Distribution
+* Version
+* Release
+* Ubuntu version
+
+---
+
+## 12.2 Kernel
+
+```bash
+uname -a
+```
+
+This displays Linux kernel and system information.
+
+---
+
+## 12.3 CPU
+
+```bash
+lscpu
+```
+
+For a shorter summary:
+
+```bash
+lscpu | grep -E 'Model name|CPU\(s\)|Architecture'
+```
+
+This helps verify:
+
+* CPU architecture
+* Number of CPUs
+* CPU model
+
+---
+
+## 12.4 Memory
+
+```bash
+free -h
+```
+
+This shows:
+
+* Total memory
+* Used memory
+* Available memory
+* Swap
+
+---
+
+## 12.5 Disk
+
+```bash
+df -h
+```
+
+This shows filesystem usage.
+
+Pay particular attention to:
+
+```text
+/
+```
+
+because this is the root filesystem.
+
+Also check the underlying block device:
+
+```bash
+lsblk
+```
+
+---
+
+# 13. Basic Linux Server Troubleshooting
+
+If the server becomes slow, do not immediately reboot it.
+
+Start by collecting information.
+
+## 13.1 Check Load
+
+```bash
+uptime
+```
+
+This shows the system uptime and load average.
+
+Example:
+
+```text
+load average: 0.15, 0.20, 0.18
+```
+
+The load average represents approximately:
+
+```text
+1 minute
+5 minutes
+15 minutes
+```
+
+Load must be interpreted relative to the number of CPUs.
+
+---
+
+## 13.2 Check Running Processes
+
+```bash
+top
+```
+
+This provides a live view of:
+
+* CPU usage
+* Memory usage
+* Processes
+* Load
+
+Press:
+
+```text
+q
+```
+
+to exit.
+
+---
+
+## 13.3 Find CPU-Hungry Processes
+
+```bash
+ps aux --sort=-%cpu | head
+```
+
+This helps identify processes consuming high CPU.
+
+---
+
+## 13.4 Find Memory-Hungry Processes
+
+```bash
+ps aux --sort=-%mem | head
+```
+
+This identifies processes consuming the most memory.
+
+---
+
+## 13.5 Check Memory Pressure
+
+```bash
+free -h
+```
+
+Pay attention to the `available` memory value.
+
+Low `free` memory by itself does not necessarily mean the server has a memory problem because Linux uses unused memory for caching.
+
+---
+
+## 13.6 Check Disk Space
+
+```bash
+df -h
+```
+
+If the root filesystem approaches 90–100% usage, investigate immediately.
+
+Find large directories:
+
+```bash
+sudo du -sh /* 2>/dev/null
+```
+
+For example, if `/var` is large:
+
+```bash
+sudo du -sh /var/* 2>/dev/null
+```
+
+---
+
+## 13.7 Check Services
+
+Check failed services:
+
+```bash
+systemctl --failed
+```
+
+Check a particular service:
+
+```bash
+systemctl status <service>
+```
+
+Example:
+
+```bash
+systemctl status nginx
+```
+
+---
+
+## 13.8 Check System Logs
+
+View recent logs:
+
+```bash
+sudo journalctl -n 100
+```
+
+View warnings and errors from the current boot:
+
+```bash
+sudo journalctl -p warning -b
+```
+
+For a specific service:
+
+```bash
+sudo journalctl -u <service>
+```
+
+Example:
+
+```bash
+sudo journalctl -u nginx
+```
+
+---
+
+## 13.9 Check Network
+
+View network interfaces:
+
+```bash
+ip addr
+```
+
+View routing:
+
+```bash
+ip route
+```
+
+View listening ports:
+
+```bash
+sudo ss -tulpn
+```
+
+These commands help identify network and service availability problems.
+
+---
+
+# 14. Recommended Troubleshooting Flow
+
+When someone reports:
+
+> "The server is slow."
+
+Use this workflow:
+
+```text
+                    Server Slow
+                        |
+                        v
+                     uptime
+                        |
+              +---------+---------+
+              |                   |
+             CPU                Memory
+              |                   |
+             top              free -h
+              |                   |
+       ps --sort=-%cpu     ps --sort=-%mem
+              |                   |
+              +---------+---------+
+                        |
+                       Disk
+                        |
+                      df -h
+                        |
+                    Disk usage
+                        |
+                      du -sh
+                        |
+                    Services
+                        |
+                systemctl --failed
+                        |
+                      Logs
+                        |
+                 journalctl
+                        |
+                    Network
+                        |
+              ss / ip / routing
+```
+
+The goal is to **identify the cause before taking corrective action**.
+
+---
+
+# 15. Key Commands Reference
+
+| Purpose                | Command                         |
+| ---------------------- | ------------------------------- |
+| Current user           | `whoami`                        |
+| User details           | `id`                            |
+| Current directory      | `pwd`                           |
+| List files             | `ls -la`                        |
+| OS information         | `cat /etc/os-release`           |
+| Kernel                 | `uname -a`                      |
+| CPU                    | `lscpu`                         |
+| Memory                 | `free -h`                       |
+| Processes              | `top`                           |
+| CPU-heavy processes    | `ps aux --sort=-%cpu \| head`   |
+| Memory-heavy processes | `ps aux --sort=-%mem \| head`   |
+| Disk space             | `df -h`                         |
+| Disk usage             | `du -sh`                        |
+| Block devices          | `lsblk`                         |
+| Load average           | `uptime`                        |
+| Network interfaces     | `ip addr`                       |
+| Routing                | `ip route`                      |
+| Listening ports        | `sudo ss -tulpn`                |
+| Failed services        | `systemctl --failed`            |
+| Service status         | `systemctl status <service>`    |
+| Recent logs            | `journalctl -n 100`             |
+| System warnings        | `sudo journalctl -p warning -b` |
+| Service logs           | `sudo journalctl -u <service>`  |
+
+---
+
+# 16. Current Lab Architecture
+
+At the end of this setup, the environment looks like:
+
+```text
+                         Internet
+                            |
+                            |
+                    AWS Security Group
+                         SSH :22
+                            |
+                            v
+                +-----------------------+
+                |      AWS EC2          |
+                |                       |
+                |    Ubuntu Linux       |
+                |                       |
+                |    t3.large           |
+                |                       |
+                |    EBS gp3            |
+                |                       |
+                |  +----------------+   |
+                |  |     devops     |   |
+                |  |                |   |
+                |  |     sudo       |   |
+                |  +----------------+   |
+                +-----------------------+
+                            ^
+                            |
+                         SSH key
+                            |
+                    Windows workstation
+```
+
+---
+
+# 17. What Comes Next
+
+This EC2 instance is now the foundation for the DevOps portfolio.
+
+Next we will install and configure:
+
+```text
+Linux
+  |
+  v
+Git
+  |
+  v
+Docker
+  |
+  v
+Docker Compose
+  |
+  v
+3-Tier Application
+  |
+  v
+Kubernetes
+  |
+  v
+Terraform
+  |
+  v
+CI/CD
+  |
+  v
+Prometheus + Grafana
+  |
+  v
+GitOps
+```
+
+The goal is to build each layer incrementally and document the work as production-oriented DevOps projects.
