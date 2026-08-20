@@ -1,6 +1,3 @@
-# docker-containerized-webapp
-Absolutely. Below is the **full GitHub-ready Day 2 document**, based on exactly what we built. I’ve written it as a portfolio project rather than a beginner tutorial, while keeping the explanations approachable.
-
 # Docker Containerized Web Application
 
 ## Project Overview
